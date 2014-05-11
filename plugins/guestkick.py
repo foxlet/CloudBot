@@ -11,4 +11,4 @@ def rampage(inp, chan=None, conn=None):
 @hook.event('352')
 def who_rampage(inp, conn=None):
     if pattern.match(inp[5]):
-        conn.cmd("KICK", [inp[1], inp[5], "Please change your nick!"])
+        conn.cmd("KICK", [inp[1], inp[5], "Please change your nick from the default and come back!"])
