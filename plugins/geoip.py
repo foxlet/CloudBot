@@ -1,54 +1,46 @@
-import os.path
-import json
-import gzip
-from StringIO import StringIO
-
-import pygeoip
-
+import socket
 from util import hook, http
 
-
-# load region database
-with open("./plugins/data/geoip_regions.json", "rb") as f:
-    regions = json.loads(f.read())
-
-if os.path.isfile(os.path.abspath("./plugins/data/GeoLiteCity.dat")):
-    # initialise geolocation database
-    geo = pygeoip.GeoIP(os.path.abspath("./plugins/data/GeoLiteCity.dat"))
-else:
-    download = http.get("http://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz")
-    string_io = StringIO(download)
-    geoip_file = gzip.GzipFile(fileobj=string_io, mode='rb')
-
-    output = open(os.path.abspath("./plugins/data/GeoLiteCity.dat"), 'wb')
-    output.write(geoip_file.read())
-    output.close()
-
-    geo = pygeoip.GeoIP(os.path.abspath("./plugins/data/GeoLiteCity.dat"))
 
 
 @hook.command
 def geoip(inp):
     """geoip <host/ip> -- Gets the location of <host/ip>"""
 
-    try:
-        record = geo.record_by_name(inp)
-    except:
-        return "Sorry, I can't locate that in my database."
+    # socket.gethostbyname and .inet_ation confirm it's a valid address, and errors if it isn't
 
-    data = {}
-
-    if "region_name" in record:
-        # we try catching an exception here because the region DB is missing a few areas
-        # it's a lazy patch, but it should do the job
+    def is_valid_hostname(hostname):
         try:
-            data["region"] = ", " + regions[record["country_code"]][record["region_name"]]
+            socket.gethostbyname(hostname)
+            return True
         except:
-            data["region"] = ""
-    else:
-        data["region"] = ""
+            return False
+    def is_valid_ip(ip):
+        try:
+            socket.inet_aton(ip)
+            return True
+        except:
+            return False
 
-    data["cc"] = record["country_code"] or "N/A"
-    data["country"] = record["country_name"] or "Unknown"
-    data["city"] = record["city"] or "Unknown"
-    return u"\x02Country:\x02 {country} ({cc}), \x02City:\x02 {city}{region}".format(**data)
+    # strips the http:// and www. from the input
+
+    if inp[0:7] == 'http://':
+            inp = inp[7:]
+    if inp[0:5] == 'www.':
+            inp = inp[5:]
+
+    # Current API does not support hostnames, so we convert it to IP here
+
+    if is_valid_hostname(inp):
+        inp = socket.gethostbyname(inp)
+
+    # Concatenate the API ip and the input, stripped of the boilerplate, and changed to IPv4/v6
+
+    url = 'http://www.telize.com/geoip/'
+    json_resp = http.get_json(url + inp)
+
+    #final validity check
+    if is_valid_ip(inp):
+        return u'The IP {} originates from {} with {} as an ISP. Its latitude and longitude are {} and {}'.format(json_resp['ip'], json_resp['country'], json_resp['isp'], json_resp['latitude'], json_resp['longitude'])
+    else:
+        return u'The IP {} is not a valid IP'.format(inp)
